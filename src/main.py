@@ -1,7 +1,11 @@
 import pandas as pd
 from dash import Dash, Input, Output, dcc, html, dash_table, callback
 import plotly.express as px
-import gui.graphs as graphs
+import gui.graph_builder as graph_builder
+from gui.components.data_table import data_table
+from gui.components.dist_graph import dist_graph
+from gui.components.feature_comp_graph import feature_comp_graph
+
 
 try:
     csv_filepath = './data/maternal_health_risk.csv'
@@ -11,7 +15,8 @@ except FileNotFoundError:
     df = pd.DataFrame() 
 
 feature_options = ['Age', 'Systolic BP', 'Diastolic', 'BS', 'Body Temp', 'Heart Rate']
-graph_options = ['histogram', 'boxplot']
+dist_graph_options = ['histogram', 'boxplot']
+comp_graph_options = ['scatter_matrix']
 
 # Initialize the Dash app
 app = Dash(__name__)
@@ -25,81 +30,69 @@ app.layout = html.Div(style={'backgroundColor': '#111111', 'color': '#FFFFFF', '
 
     html.Hr(),
 
-    # Main content area with two columns
-    html.Div(className='row', style={'display': 'flex', 'padding': '20px'}, children=[
-        html.Div(style={'padding': 10, 'flex': 1}, children=[
-            
-            # Control for feature selection
-            html.H3('Select a Feature'),
-            dcc.RadioItems(
-                id='feature-controls-and-radio-item',
-                options=[{'label': col, 'value': col} for col in feature_options],
-                value='Age',
-                labelStyle={'display': 'block', 'margin-bottom': '10px'}
-            ),
-            
-            html.Hr(style={'margin': '20px 0'}),
+    data_table(df, feature_options),
 
-            # Control for graph type
-            html.H3('Select Graph Type'),
-            dcc.RadioItems(
-                id='graph-controls-radio-item', # Corrected ID
-                options=[{'label': col.capitalize(), 'value': col} for col in graph_options],
-                value='histogram',
-                labelStyle={'display': 'block', 'margin-bottom': '10px'}
-            )
-        ]),
-
-        # --- Right Column (Outputs) ---
-        html.Div(style={'padding': 10, 'flex': 2.5}, children=[
-            dcc.Graph(
-                figure={}, 
-                id='health-graph',
-                style={'height':'500px'}    
-            ),
-            
-            html.H3('Raw Data', style={'marginTop': '30px'}),
-            
-            # Data Table
-            dash_table.DataTable(
-                id='data-table',
-                data=df.to_dict('records'),
-                page_size=8,
-                style_header={
-                    'backgroundColor': 'rgb(30, 30, 30)',
-                    'color': 'white',
-                    'fontWeight': 'bold'
-                },
-                style_cell={
-                    'backgroundColor': 'rgb(50, 50, 50)',
-                    'color': 'white',
-                    'textAlign': 'left',
-                    'padding': '10px',
-                    'border': '1px solid #444444'
-                },
-                style_table={'borderRadius': '10px', 'overflow': 'hidden'}
-            )
-        ])
-    ])
-]) 
-
+    # graph area with two columns
+    dist_graph(feature_options, dist_graph_options),
+    feature_comp_graph(feature_options, comp_graph_options)
+])
 
 @callback(
-    Output(component_id='health-graph', component_property='figure'),
-    Input(component_id='feature-controls-and-radio-item', component_property='value'),
-    Input(component_id='graph-controls-radio-item', component_property='value')
+    Output(component_id='dist-graph', component_property='figure'),
+    Input(component_id='feature-dist-graph-radio-item', component_property='value'),
+    Input(component_id='graph-dist-graph-radio-item', component_property='value')
 )
-def update_graph(col_chosen, graph_type):
+# input arguments are currentr value of each input properties, IN THE ORDER THEY WERE SPECIFIED
+def update_dist_graph(dist_col, graph_type):
     if graph_type == 'histogram':
-        fig = graphs.plot_histogram(df, col_chosen)
+        fig = graph_builder.plot_histogram(df, dist_col)
 
     elif graph_type == 'boxplot':
-        fig = graphs.plot_boxplot(df, col_chosen)
+        fig = graph_builder.plot_boxplot(df, dist_col)
 
     else:
         fig = {}
         
     return fig
+
+@callback(
+        Output(component_id='feature-comparison-graph', component_property='figure'),
+        Input(component_id='xfeature-comparison-graph', component_property='value'),
+        Input(component_id='yfeature-comparison-graph', component_property='value'),
+        Input(component_id='comparison-graph-radio-item', component_property='value')
+)
+def update_comparison_graph(x_col, y_col, graph_type):
+    if graph_type == 'scatter_matrix':
+        fig = graph_builder.plot_scatter_matrix(df, x_col, y_col)
+    else:
+        fig = {}
+
+    return fig
+
+
+@callback(
+    Output(component_id='mean-value', component_property='children'),
+    Output(component_id='median-value', component_property='children'),
+    Output(component_id='mode-value', component_property='children'),
+    Input(component_id='metrics-feature-dropdown', component_property='value')
+)
+def update_metrics(selected_feature):
+    if selected_feature:
+        mean_val = df[selected_feature].mean()
+        median_val = df[selected_feature].median()
+        mode_val = df[selected_feature].mode()
+        
+        formatted_mean = f'{mean_val:.2f}'
+        formatted_median = f'{median_val:.2f}'
+        if not mode_val.empty:
+            formatted_mode = f'{mode_val.iloc[0]:.2f}'
+        else:
+            formatted_mode = '-'
+        
+        return formatted_mean, formatted_median, formatted_mode
+    
+    return '-', '-', '-'
+
 
 
 # --- Run the App ---
